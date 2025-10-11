@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests, sys, os, json, time
+import requests, sys, os, json, time, binascii, hashlib
 from datetime import datetime
 from config import *
 
@@ -51,8 +51,9 @@ auth_token_path = os.path.join(script_dir, '.librelinkup-authtoken')
 if os.path.isfile(auth_token_path):
     with open(auth_token_path) as json_file:
             auth = json.load(json_file)
-            if auth['expires'] > time.time():
+            if auth['expires'] > time.time() and 'account_id' in auth:
                 LIBRELINKUP_TOKEN = auth['token']
+                LIBRELINKUP_ACCOUNT_ID = auth['account_id']
                 logging.info("Using cached authTicket, expiration: %s", datetime.fromtimestamp(auth['expires']).isoformat())
 
 if LIBRELINKUP_TOKEN is None:
@@ -70,12 +71,16 @@ if LIBRELINKUP_TOKEN is None:
         logging.error("Authentication failed")
         sys.exit(1)
 
+    LIBRELINKUP_ACCOUNT_ID = binascii.hexlify(hashlib.sha256(data['data']['user']['id'].encode('utf-8')).digest()).decode('utf-8')
+    data['data']['authTicket']['account_id'] = LIBRELINKUP_ACCOUNT_ID
+
     with open(auth_token_path, 'w') as outfile:
         json.dump(data['data']['authTicket'], outfile)
 
     LIBRELINKUP_TOKEN = data['data']['authTicket']['token']
 
 LIBRELINKUP_HEADERS['Authorization'] = 'Bearer ' + LIBRELINKUP_TOKEN
+LIBRELINKUP_HEADERS['Account-Id'] = LIBRELINKUP_ACCOUNT_ID
 
 try:
     response = requests.get(f'{LIBRELINKUP_URL}/llu/connections', headers=LIBRELINKUP_HEADERS)
